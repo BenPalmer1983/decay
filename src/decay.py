@@ -221,7 +221,7 @@ class decay:
           iso = chain[n]
           k = iso['isotope_key']
           if(n>0):
-            bf = "{0:3f}".format(iso['bf'])
+            bf = "{0:3e}".format(iso['bf'])
             fh.write(" --[" + str(bf) + "]--> ")
           fh.write(decay.pad(decay.results['tally'][k]['printable'], 12))
         fh.write("\n")
@@ -232,7 +232,7 @@ class decay:
           if(decay.results['chains'][cn][n]['half_life'] == None):
             fh.write(decay.pad("[Stable]",12))
           else:
-            fh.write(decay.pad("[" + str("{0:8f}".format(decay.results['chains'][cn][n]['half_life'])) + "]",12))
+            fh.write(decay.pad("[" + str("{0:8e}".format(decay.results['chains'][cn][n]['half_life'])) + "]",12))
         fh.write("\n")
         fh.write("\n")        
         fh.write("\n")
@@ -480,7 +480,7 @@ class decay:
     decay.calculate(parent, time, idata, "testing/log_84216.txt")
 
 
-decay.test()
+#decay.test()
 
 
 
