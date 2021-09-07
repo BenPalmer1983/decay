@@ -3,6 +3,7 @@ from pz import pz
 from isotopes import isotopes
 import matplotlib.pyplot as plt
 import copy
+import hashlib
 
 class decay:
 
@@ -41,12 +42,12 @@ class decay:
 
 
   @staticmethod
-  def make_chain(key, l=0, out=[], bf=0.0, q=0.0):
+  def make_chain(key, l=0, out=[], bf=0.0):
     if(not isotopes.is_valid(key)):
       return out
     if(l == 0):   
       decay.chains_store = []
-    out.append([l, key, bf, q])
+    out.append([l, key, bf])
     if(isotopes.is_stable(key)):
       if(len(out) > 1):
         for i in range(len(out)-1,1,-1):
@@ -58,12 +59,11 @@ class decay:
       dms = isotopes.get_decay_modes(key)
       for k in dms.keys():
         bf = dms[k]['branching_factor']
-        q = dms[k]['qvalue']
-        decay.make_chain(k, l, out, bf, q)
+        decay.make_chain(k, l, out, bf)
       return out      
 
   @staticmethod
-  def calculate(parent, time, i_data_in, log=None):
+  def calculate(parent, time, i_data_in, log=None, custom_chain=None):
     decay.results = {
                     'tally': {},
                     'unique': None,
@@ -71,62 +71,133 @@ class decay:
                     } 
     decay.chains_store = None
 
-    decay.results['unique'] = decay.chain_isotopes(parent, [])   
+    if(custom_chain == None):
+      decay.chains_store = []
+      decay.make_chain(parent, 0, [])
+      decay.results['chains'] = []
+      cn = 0
+      for chain in decay.chains_store:
+        decay.results['chains'].append([])
+        for iso in chain:
+          k = iso[1]
+          bf = iso[2]
+          i_data = isotopes.get(k)
+          half_life = None
+          n0 = 0.0
+          w = 0.0
+          if(not i_data['stable']):
+            half_life = i_data['half_life']           
+          if(k in i_data_in.keys()):
+            n0 = i_data_in[k]['n0']
+            w = i_data_in[k]['w']
+          d = {
+              'isotope_key': k, 
+              'bf': bf,
+              'w': w,
+              'n0': n0,
+              'nend': 0,
+              'half_life': half_life,
+              } 
+          decay.results['chains'][cn].append(d)
+        cn = cn + 1
+    else:
+      decay.results['chains'] = custom_chain
 
 
-    for k in decay.results['unique']:
-      i_data = isotopes.get(k)
-      decay.results['tally'][k] = {
-        'element': i_data['element'],
-        'protons': i_data['protons'],
-        'nucleons': i_data['nucleons'],
-        'metastable': i_data['metastable'],
-        'stable': i_data['stable'],
-        'half_life': None,
-        'decay_constant': 0.0,
-        'n0': 0.0,
-        'nend': 0.0,
-        'w': 0.0,
-      }
-      if(not i_data['stable']):
-        decay.results['tally'][k]['half_life'] = i_data['half_life']
-        decay.results['tally'][k]['decay_constant'] = i_data['decay_constant']
-             
-      if(k in i_data_in.keys()):
-        decay.results['tally'][k]['n0'] = i_data_in[k]['n0']
-        decay.results['tally'][k]['w'] = i_data_in[k]['w']
+    # Find unique and make tally
+    decay.results['unique'] = []
+    for chain in decay.results['chains']:
+      for iso in chain:
+        k = iso['isotope_key']
+        if(k not in decay.results['tally'].keys()):
+          decay.results['unique'].append(k)
+          # Use provided data
+          if(iso['half_life'] == None):
+            stable = True
+            half_life = None
+            decay_constant = 0.0
+          else:
+            stable = False
+            half_life = iso['half_life']
+            decay_constant = numpy.log(2) / iso['half_life']
+          w = iso['w']
+          n0 = iso['n0'] 
+          # Get proton/neutron etc from isotopes database
+          i_data = isotopes.get(k)
+          if(i_data is None):     
+            decay.results['tally'][k] = {
+                                        'printable': 'Custom',
+                                        'element': 'ZZ',
+                                        'protons': 999,
+                                        'nucleons': 999,
+                                        'metastable': 9,
+                                        'stable': stable,
+                                        'half_life': half_life,
+                                        'decay_constant': decay_constant,
+                                        'w': w,
+                                        'n0': n0,
+                                        'nend': 0.0,
+                                        }
+          else:
+            decay.results['tally'][k] = {
+                                        'printable': decay.pad(isotopes.get_printable_name(k), 12),
+                                        'element': i_data['element'],
+                                        'protons': i_data['protons'],
+                                        'nucleons': i_data['nucleons'],
+                                        'metastable': i_data['metastable'],
+                                        'stable': stable,
+                                        'half_life': half_life,
+                                        'decay_constant': decay_constant,
+                                        'w': w,
+                                        'n0': n0,
+                                        'nend': 0.0,
+                                        }
 
-    decay.chains_store = []
-    decay.make_chain(parent, 0, [])
-    decay.results['chains'] = copy.deepcopy(decay.chains_store)
 
-    set = []      
+    decay.results['chains_individual'] = []
     for cn in range(len(decay.results['chains'])):
-      chain = decay.results['chains'][cn]
+      for n in range(len(decay.results['chains'][cn])):
+        nc = []
+        if(decay.results['chains'][cn][n]['n0']>0.0 or decay.results['chains'][cn][n]['w']>0.0):
+          for j in range(n, len(decay.results['chains'][cn])):
+            iso = copy.deepcopy(decay.results['chains'][cn][j])
+            if(j>n):
+              iso['n0'] = 0.0
+              iso['w'] = 0.0
+            nc.append(iso)
+        if(len(nc)>0):
+          decay.results['chains_individual'].append(nc)
+
+    for cn in range(len(decay.results['chains_individual'])):
+      chain = decay.results['chains_individual'][cn]
       n0 = numpy.zeros((len(chain),),)
       w = numpy.zeros((len(chain),),)
       l = numpy.zeros((len(chain),),)
       b = numpy.zeros((len(chain)-1,),)
-
-      for n in range(len(chain)):
-        k = chain[n][1]
-        n0[n] = decay.results['tally'][k]['n0']
-        w[n] = decay.results['tally'][k]['w']
+      for n in range(len(decay.results['chains_individual'][cn])):
+        k = decay.results['chains_individual'][cn][n]['isotope_key']
+        n0[n] = decay.results['chains_individual'][cn][n]['n0']
+        w[n] = decay.results['chains_individual'][cn][n]['w']
         l[n] = decay.results['tally'][k]['decay_constant']
-        if(n > 0):
-          b[n-1] = chain[n][2]
+        if(n>0):
+          b[n-1] = decay.results['chains_individual'][cn][n]['bf']
+      nt = decay.calculate_activity(time, l, b, w, n0) 
+      for n in range(len(decay.results['chains_individual'][cn])):
+        decay.results['chains_individual'][cn][n]['nend'] = nt[n]
 
-      nt = decay.calculate_activity(time, l, b, w, n0)  
-      for n in range(len(chain)):
-        k = chain[n][1]
-        sk = '0'
-        for m in range(n+1):
-          sk = sk + str(chain[m][1]) 
-          if(sk not in set):        
-            set.append(sk)
-            decay.results['tally'][k]['nend'] = decay.results['tally'][k]['nend'] + nt[n]
+    set = []
+    for cn in range(len(decay.results['chains_individual'])):
+      ckey = ''
+      for n in range(len(decay.results['chains_individual'][cn])):
+        k = decay.results['chains_individual'][cn][n]['isotope_key']
+        ckey = ckey + str(decay.results['chains_individual'][cn][n]['isotope_key']) + "N0:" + str(decay.results['chains_individual'][cn][n]['n0']) + "W:" + str(decay.results['chains_individual'][cn][n]['w'])
+        ckeyh = hashlib.md5(ckey.encode())
+        ckeyh = ckeyh.hexdigest()
+        if(ckeyh not in set):
+          decay.results['tally'][k]['nend'] = decay.results['tally'][k]['nend'] + decay.results['chains_individual'][cn][n]['nend']
+          set.append(ckeyh)
 
-    
+
     # Log
     if(log != None):
       width = 120
@@ -134,32 +205,47 @@ class decay:
       fh.write("Unique Isotopes\n")
       fh.write(decay.hr(width) + "\n")
       for k in decay.results['unique']: 
-        line = decay.pad(isotopes.get_printable_name(k), 12)
+        line = decay.results['tally'][k]['printable']
         fh.write(line + "\n")
       fh.write("\n")
       fh.write("\n")
       fh.write("Decay Chains\n")
       fh.write(decay.hr(width) + "\n")
+      fh.write("\n")
+      fh.write("\n")
       for cn in range(len(decay.results['chains'])):
         chain = decay.results['chains'][cn]
-        fh.write(decay.pad(cn+1,3))
+
+        fh.write(decay.pad(cn+1,6)) 
         for n in range(len(chain)):
-          k = chain[n][1]
-          fh.write(isotopes.get_printable_name(k))
-          if(n<(len(chain)-1)):
-            b = "{0:3f}".format(chain[n+1][2])
-            fh.write(" --[" + str(b) + "]--> ")
+          iso = chain[n]
+          k = iso['isotope_key']
+          if(n>0):
+            bf = "{0:3f}".format(iso['bf'])
+            fh.write(" --[" + str(bf) + "]--> ")
+          fh.write(decay.pad(decay.results['tally'][k]['printable'], 12))
         fh.write("\n")
-      fh.write("\n")
-      fh.write("\n")
+        fh.write(decay.pad("T1/2",6)) 
+        for n in range(len(chain)):
+          if(n>0):
+            fh.write(decay.pad("",17)) 
+          if(decay.results['chains'][cn][n]['half_life'] == None):
+            fh.write(decay.pad("[Stable]",12))
+          else:
+            fh.write(decay.pad("[" + str("{0:8f}".format(decay.results['chains'][cn][n]['half_life'])) + "]",12))
+        fh.write("\n")
+        fh.write("\n")        
+        fh.write("\n")
 
 
+     
       fh.write("Amounts\n")
       fh.write(decay.hr(width) + "\n")
       fh.write("\n")
       fh.write(decay.hr(width) + "\n")
       line = decay.pad("Isotope", 12)
       line = line + decay.pad("T(1/2)", 18)
+      line = line + decay.pad("Decay Constant", 18)
       line = line + decay.pad("W", 18)
       line = line + decay.pad("N(t=0)", 18)
       line = line + decay.pad("N(t=" + str(time) + ")", 18)
@@ -168,11 +254,13 @@ class decay:
 
 
       for k in decay.results['tally'].keys():
-        line = decay.pad(isotopes.get_printable_name(k), 12)
+        line = decay.pad(decay.results['tally'][k]['printable'], 12)
         if(decay.results['tally'][k]['half_life'] is None):
+          line = line + decay.pad("Stable", 18)
           line = line + decay.pad("Stable", 18)
         else:
           line = line + decay.pad(str("{0:16e}".format(decay.results['tally'][k]['half_life'])).strip(), 18)
+          line = line + decay.pad(str("{0:16e}".format(decay.results['tally'][k]['decay_constant'])).strip(), 18)
         line = line + decay.pad(str("{0:16e}".format(decay.results['tally'][k]['w'])).strip(), 18)
         line = line + decay.pad(str("{0:16e}".format(decay.results['tally'][k]['n0'])).strip(), 18)
         line = line + decay.pad(str("{0:16e}".format(decay.results['tally'][k]['nend'])).strip(), 18)
@@ -180,7 +268,7 @@ class decay:
       fh.write(decay.hr(width) + "\n")
       fh.write("\n")
       fh.write("\n")
-
+      
       fh.close()
 
 
@@ -236,8 +324,7 @@ class decay:
   def activity_stable(t, l, b, w, n0, m):
     s = n0[m] + w[m] * t
     for k in range(0, m):
-      s = s + decay.r(k, m, b, l) * decay.f_stable(t,k,m-1,l) * n0[k]
-      s = s + decay.r(k, m, b, l) * decay.g_stable(t,k,m-1,l) * w[k]
+      s = s + decay.r(k, m, b, l) * (decay.f_stable(t,k,m-1,l) * n0[k] +  decay.g_stable(t,k,m-1,l) * w[k])
     return s
 
   @staticmethod
@@ -321,29 +408,89 @@ class decay:
   def test():
     print("Decay")
 
+    # Load isotopes dictionary
     decay.set("../data/isotopes.pz")
 
-    #parent = 83214
-    #time = 1000
-    #idata = {}
-    #idata[83214] = {'w': 5.0, 'n0': 100.0}
-    #decay.calculate(parent, time, idata, "log.txt")
+    """
+    idata = {}
+    parent = 27055
+    time = 3000
+    idata[27055] = {'w': 0.02, 'n0': 100.0}
+    idata[26055] = {'w': 0.04, 'n0': 20.0}
+    idata[25055] = {'w': 0.023, 'n0': 30.0}
+    decay.calculate(parent, time, idata, "log.txt")
+    """
 
-    #idata = {}
-    #parent = 27055
-    #time = 3000
-    #idata[27055] = {'w': 0.02, 'n0': 100.0}
-    #idata[26055] = {'w': 0.04, 'n0': 20.0}
-    #idata[25055] = {'w': 0.023, 'n0': 30.0}
-    #decay.calculate(parent, time, idata, "log.txt")
-
+    """
     idata = {}
     parent = 83213
     time = 1000
     idata[83213] = {'w': 0.02, 'n0': 100.0}
     decay.calculate(parent, time, idata, "testing/log_83213.txt")
+    """
 
-#decay.test()
+    """
+    idata = {}
+    parent = 84215
+    time = 10
+    idata[84215] = {'w': 0.02, 'n0': 100.0}
+    idata[81207] = {'w': 0.0, 'n0': 10.0}
+    decay.calculate(parent, time, idata, "testing/log_84215.txt")
+    """
+
+    """
+    idata = {}
+    parent = 85219
+    time = 1000
+    idata[85219] = {'w': 0.02, 'n0': 100.0}
+    idata[82207] = {'w': 0.0, 'n0': 10.0}
+    decay.calculate(parent, time, idata, "testing/log_85219.txt")
+    """
+ 
+    """
+    idata = {}
+    parent = 84215
+    time = 10
+    custom_chain = [
+                   [{'isotope_key': 84215, 'bf': 0.0, 'w': 1.0, 'n0': 10000.0, 'half_life': 83.0},
+                   {'isotope_key': 85215, 'bf': 0.2, 'w': 0.0, 'n0': 0.0, 'half_life': 92.0},
+                   {'isotope_key': 83211, 'bf': 1.0, 'w': 0.0, 'n0': 40.0, 'half_life': 2.0}, {'isotope_key': 81207, 'bf': 0.6, 'w': 0.0, 'n0': 20.0, 'half_life': 506.44}, {'isotope_key': 82207, 'bf': 1.0, 'w': 2.0, 'n0': 10.0, 'half_life': None}],   
+                   [{'isotope_key': 84215, 'bf': 0.0, 'w': 1.0, 'n0': 10000.0, 'half_life': 83.0},
+                   {'isotope_key': 85215, 'bf': 0.2, 'w': 0.0, 'n0': 0.0, 'half_life': 92.0},
+                   {'isotope_key': 83211, 'bf': 1.0, 'w': 0.0, 'n0': 40.0, 'half_life': 2.0}, {'isotope_key': 84211, 'bf': 0.4, 'w': 0.0, 'n0': 0.0, 'half_life': 586.44}, {'isotope_key': 82207, 'bf': 1.0, 'w': 2.0, 'n0': 10.0, 'half_life': None}],
+                   [{'isotope_key': 84215, 'bf': 0.0, 'w': 1.0, 'n0': 10000.0, 'half_life': 83.0},
+                   {'isotope_key': 82211, 'bf': 0.8, 'w': 0.4, 'n0': 0.0, 'half_life': 47.0},
+                   {'isotope_key': 83211, 'bf': 1.0, 'w': 0.0, 'n0': 40.0, 'half_life': 2.0}, {'isotope_key': 81207, 'bf': 0.6, 'w': 0.0, 'n0': 20.0, 'half_life': 506.44}, {'isotope_key': 82207, 'bf': 1.0, 'w': 2.0, 'n0': 10.0, 'half_life': None}], 
+                   [{'isotope_key': 84215, 'bf': 0.0, 'w': 1.0, 'n0': 10000.0, 'half_life': 83.0},
+                   {'isotope_key': 82211, 'bf': 0.8, 'w': 0.4, 'n0': 0.0, 'half_life': 47.0},
+                   {'isotope_key': 83211, 'bf': 1.0, 'w': 0.0, 'n0': 40.0, 'half_life': 2.0}, {'isotope_key': 84211, 'bf': 0.4, 'w': 0.0, 'n0': 0.0, 'half_life': 586.44}, {'isotope_key': 82207, 'bf': 1.0, 'w': 2.0, 'n0': 10.0, 'half_life': None}]
+                   ]
+    decay.calculate(parent, time, idata, "testing/log_84215_test.txt", custom_chain)
+    """
+
+    idata = {}
+    parent = 84216
+    time = 10
+    idata[84216] = {'w': 0.20, 'n0': 100.0}
+    idata[82212] = {'w': 0.0, 'n0': 5.0}
+    idata[83212] = {'w': 0.07, 'n0': 15.0}
+    idata[81208] = {'w': 0.005, 'n0': 0.0}
+    # 84Po212 0 0 (default)
+    idata[82208] = {'w': 0.01, 'n0': 300.0}
+    decay.calculate(parent, time, idata, "testing/log_84216.txt")
+
+
+decay.test()
+
+
+
+
+
+
+
+
+
+
 
 
 
