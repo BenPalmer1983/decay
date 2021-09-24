@@ -1,3 +1,4 @@
+import os
 import numpy
 from pz import pz
 from isotopes import isotopes
@@ -7,7 +8,6 @@ import hashlib
 
 class decay:
 
-  isotopes = None
   path_isotopes = "../data/isotopes.pz"
   loaded = False
 
@@ -20,7 +20,6 @@ class decay:
   @staticmethod
   def load():
     if(decay.loaded == False):
-      decay.isotopes = pz.load(decay.path_isotopes)
       decay.loaded = True
 
 
@@ -64,6 +63,12 @@ class decay:
 
   @staticmethod
   def calculate(parent, time, i_data_in, log=None, custom_chain=None):
+
+    if(log != None):
+      log_dir = decay.get_file_dir(log)
+      print(log_dir)
+      decay.make_dir(log_dir)
+
     decay.results = {
                     'tally': {},
                     'unique': None,
@@ -200,7 +205,7 @@ class decay:
 
     # Log
     if(log != None):
-      width = 120
+      width = 140
       fh = open(log, 'w')
       fh.write("Unique Isotopes\n")
       fh.write(decay.hr(width) + "\n")
@@ -249,6 +254,8 @@ class decay:
       line = line + decay.pad("W", 18)
       line = line + decay.pad("N(t=0)", 18)
       line = line + decay.pad("N(t=" + str(time) + ")", 18)
+      line = line + decay.pad("A(t=0)", 18)
+      line = line + decay.pad("A(t=" + str(time) + ")", 18)
       fh.write(line + "\n")
       fh.write(decay.hr(width) + "\n")
 
@@ -264,6 +271,9 @@ class decay:
         line = line + decay.pad(str("{0:16e}".format(decay.results['tally'][k]['w'])).strip(), 18)
         line = line + decay.pad(str("{0:16e}".format(decay.results['tally'][k]['n0'])).strip(), 18)
         line = line + decay.pad(str("{0:16e}".format(decay.results['tally'][k]['nend'])).strip(), 18)
+        if(decay.results['tally'][k]['half_life'] is not None):
+          line = line + decay.pad(str("{0:16e}".format(decay.results['tally'][k]['decay_constant'] * decay.results['tally'][k]['n0'])).strip(), 18)
+          line = line + decay.pad(str("{0:16e}".format(decay.results['tally'][k]['decay_constant'] * decay.results['tally'][k]['nend'])).strip(), 18)
         fh.write(line + "\n")
       fh.write(decay.hr(width) + "\n")
       fh.write("\n")
@@ -404,6 +414,34 @@ class decay:
       inp = inp + "="
     return inp
 
+
+  @staticmethod
+  def get_file_dir(file_path):
+    file_path = file_path.strip()
+    if(file_path[0] != "/"):
+      root = os.getcwd()
+      file_path = root + "/" + file_path
+    file_path = file_path.split("/")
+    path = ""
+    for i in range(1,len(file_path) - 1):
+      path = path + "/" + file_path[i]
+    return path
+
+  @staticmethod
+  def make_dir(dir):
+    dirs = dir.split("/")
+    try:
+      dir = ''
+      for i in range(len(dirs)):
+        dir = dir + dirs[i]
+        if(not os.path.exists(dir) and dir.strip() != ''):
+          os.mkdir(dir) 
+        dir = dir + '/'
+      return True
+    except:
+      return False
+
+
   @staticmethod
   def test():
     print("Decay")
@@ -477,26 +515,13 @@ class decay:
     idata[81208] = {'w': 0.005, 'n0': 0.0}
     # 84Po212 0 0 (default)
     idata[82208] = {'w': 0.01, 'n0': 300.0}
-    decay.calculate(parent, time, idata, "testing/log_84216.txt")
+    decay.calculate(parent, time, idata, "testing/log_84216_new.txt")
 
 
-#decay.test()
+def main():
+  decay.test()
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+if __name__ == "__main__":
+    main()    
 
 
