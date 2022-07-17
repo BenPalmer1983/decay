@@ -189,9 +189,6 @@ class decay:
         l[n] = decay.results['tally'][k]['decay_constant']
         if(n>0):
           b[n-1] = decay.results['chains_individual'][cn][n]['bf']
-        # Some observationally stable will still have a decay constant, so set to -1.0
-        if(isotopes.is_stable(k)):
-          l[n] = -1.0
       nt = decay.calculate_activity(time, l, b, w, n0) 
       for n in range(len(decay.results['chains_individual'][cn])):
         decay.results['chains_individual'][cn][n]['nend'] = nt[n]
@@ -301,159 +298,119 @@ class decay:
   ##########################################
   # DECAY EQUATIONS
   ##########################################
-    
+
   @staticmethod
-  def calculate_activity(t, lam, b, w, n0):
+  def calculate_activity(t, l, b, w, n0):
     nt = numpy.zeros((len(n0),),)
     for m in range(0,len(n0)):
-      if(lam[m] <= 0):
-        nt[m] = decay.calc_stable(t, m, lam, b, w, n0)
-      else:
-        nt[m] = decay.calc_unstable(t, m, lam, b, w, n0)
+      if(l[m] > 0.0):
+        nt[m] = decay.activity_unstable(t, l, b, w, n0, m)
+      elif(l[m] == 0.0):
+        nt[m] = decay.activity_stable(t, l, b, w, n0, m)
     return nt
 
   @staticmethod
-  def calc_unstable(t, m, lam, b, w, n0):
-    y = 0.0 
-    k = 0
-    while(k<=m):    
-      y = y + decay.r(k, m, lam, b) * (decay.f_unstable(t, k, m, lam) * n0[k] + decay.g_unstable(t, k, m, lam) * w[k])
-      k = k + 1
-    return y
-
-  @staticmethod
-  def f_unstable(t, k, m, lam): 
+  def activity_unstable(t, l, b, w, n0, m):
     s = 0.0
-    i = k
-    while(i<=m):
-      p = decay.lprod(lam, k, m, 3, i)
-      s = s + numpy.exp(-lam[i] * t) * (1.0 / p)
-      i = i + 1
-    s = s * (-1)**(m-k)  
+    for k in range(0, m+1):
+      s = s + decay.r(k, m, b, l) * (decay.f_unstable(t,k,m,l) * n0[k] + decay.g_unstable(t,k,m,l) * w[k])
     return s
 
-
   @staticmethod
-  def g_unstable(t, k, m, lam): 
-    # Term a
-    p = decay.lprod(lam, k, m, 1)
-    a = 1.0 / p
-    # Term b
+  def f_unstable(t,k,m,l):
     s = 0.0
-    i = k
-    while(i<=m):
-      p = decay.lprod(lam, k, m, 3, i)  
-      s = s + (1 / lam[i]) * numpy.exp(-lam[i] * t) * (1.0 / p)
-      i = i + 1
-    s = s * (-1)**(m-k+1)           
-    return a + s    
+    for i in range(k, m+1):
+      p = 1.0
+      for j in range(k, m+1):
+        if(i != j):
+          p = p * (1 / (l[i] - l[j]))
+      s = s + numpy.exp(-1 * l[i] * t) * p
+    s = (-1)**(m-k) * s
+    return s
 
   @staticmethod
-  def calc_stable(t, m, lam, b, w, n0):
-    y = n0[m] + w[m] * t 
-    k = 0
-    while(k<=m-1):    
-      y = y + decay.r(k, m, lam, b) * (decay.f_stable(t, k, m, lam) * n0[k] + decay.g_stable(t, k, m, lam) * w[k])
-      k = k + 1
-    return y    
-
-  @staticmethod
-  def f_stable(t, k, m, lam):  
-    mm = m - 1
-    p = decay.lprod(lam, k, mm, 1)
-    a = 1.0 / p
-
+  def g_unstable(t,k,m,l):
+    pa = 1.0
+    for i in range(k,m+1):
+      pa = pa * l[i]
+    pa = 1.0 / pa
     s = 0.0
-    i = k
-    while(i<=mm):
-      p = decay.lprod(lam, k, mm, 3, i)
-      s = s + (1 / lam[i]) * numpy.exp(-lam[i] * t) * (1.0 / p)
-      i = i + 1
-    s = s * (-1)**(mm-k+1)  
-    return a + s
-   
-  @staticmethod 
-  def g_stable(t, k, m, lam): 
-    mm = m - 1
-
-    p = decay.lprod(lam, k, mm, 1) 
-    a = (t/p)
-
-    s = 0.0
-    i = k
-    while(i<=mm):
-      p = decay.lprod(lam, k, mm, 4, i) 
-      s = s + p
-      i = i + 1
-    q = decay.lprod(lam, k, mm, 2)
-    b = (-s / q)
-
-    c = 0.0
-    i = k
-    while(i<= mm):
-      p = lam[i]**2 * decay.lprod(lam, k, mm, 3, i) 
-      c = c + numpy.exp(-1.0 * lam[i] * t) / p
-      i = i + 1
-    c = c * (-1.0)**(mm - k)
-    nd = a + b + c
-
-
-    
-    return nd
-    
-    
-    
+    for i in range(k, m+1):
+      pb = 1.0
+      for j in range(k, m+1):
+        if(i != j):
+          pb = pb * (1 / (l[i]-l[j]))
+      s = s + (1/l[i]) * numpy.exp(-l[i]*t) * pb
+    return pa + s * (-1)**(m-k+1) 
 
   @staticmethod
-  def r(k, m, lam, b):
+  def activity_stable(t, l, b, w, n0, m):
+    s = n0[m] + w[m] * t
+    for k in range(0, m):
+      s = s + decay.r(k, m, b, l) * (decay.f_stable(t,k,m-1,l) * n0[k] +  decay.g_stable(t,k,m-1,l) * w[k])
+    return s
+
+  @staticmethod
+  def f_stable(t,k,m,l):    
+    p = 1.0
+    for i in range(k, m+1):
+      p = p * l[i]
+    s = 0.0
+    for i in range(k, m+1):
+      r = l[i]
+      for j in range(k, m+1):
+        if(i != j):
+          r = r * (l[i] - l[j])
+      s = s + (1/r)*numpy.exp(-1*l[i]*t)   
+    return (1.0/p) + s * (-1.0)**(m-k+1)
+
+
+  @staticmethod
+  def g_stable(t,k,m,l):
+    nd = 0.0
+    mp = (-1.0)**(m - k)
+
+    r = 1.0
+    for i in range(k, m+1):
+      r = r * l[i]
+    nd = nd + (1.0/r) * t
+
+    p = 0.0
+    for i in range(k, m+1):
+      tm = 1.0
+      for j in range(k, m+1):
+        if(i != j):
+          tm = tm * l[j]
+      p = p + tm
+
+    q = 1.0
+    for i in range(k, m+1):
+      q = q * l[i]*l[i]
+    
+    r = (-1.0) * (p / q)
+    nd = nd + r  
+
+    C = 0.0
+    for i in range(k, m+1):
+      r = 1.0 * l[i] * l[i]
+      for j in range(k, m+1):
+        if(i != j):
+          r = r * (l[i] - l[j])
+      C = C + (1/r) * numpy.exp(-1.0 * l[i] * t)
+    nd = nd + C * mp
+
+    return nd 
+
+
+  @staticmethod
+  def r(k, m, b, l):
     if(k == m):
-      return 1  
+      return 1.0
     else:
       p = 1.0
-      i = k
-      while(i<=(m-1)):
-        p = p * b[i] * lam[i]
-        i = i + 1
+      for i in range(k, m):
+        p = p * (b[i] * l[i])
       return p
- 
-  @staticmethod   
-  def lprod(lam, k, m, t=1, i=None): 
-    # PROD k,m lam[j]
-    if(t == 1):
-      p = 1.0
-      j = k
-      while(j<=m):
-        p = p * lam[j]
-        j = j + 1
-      return p
-    # PROD k,m lam[j]**2
-    elif(t == 2):
-      p = 1.0
-      j = k
-      while(j<=m):
-        p = p * lam[j]**2
-        j = j + 1
-      return p
-    # PROD k,m, i!=j (lam[i]-lam[j])
-    elif(t == 3):
-      p = 1.0
-      j = k
-      while(j<=m):
-        if(i != j):
-          p = p * (lam[i] - lam[j])
-        j = j + 1
-      return p
-    # PROD k,m, i!=j lam[j]
-    elif(t == 4):
-      p = 1.0
-      j = k
-      while(j<=m):
-        if(i != j):
-          p = p * lam[j]
-        j = j + 1
-      return p
-
-
 
   
   @staticmethod
