@@ -1,5 +1,7 @@
 import numpy
 import os
+import pickle
+import hashlib
 from pz import pz
 
 class isotopes:
@@ -23,9 +25,36 @@ class isotopes:
         isotopes.path = os.environ.get('ISOTOPES')
       if(not os.path.isfile(isotopes.path)):
         print("Isotope data file is not available.  Quitting.")
-        exit()
-      isotopes.d = pz.load(isotopes.path, 'lzma')
+        exit() 
+      if(isotopes.path[-2:] == 'pz'):
+        h = isotopes.hash(isotopes.path)
+        if(h != 'c4a77e8e185a236c416c56bb3d46346e063d2c458284f36ad65b9076c7d8a93b'):
+          print("Failed hash - isotopes.pz")
+          exit() 
+        isotopes.d = pz.load(isotopes.path, 'lzma')
+      elif(isotopes.path[-1:] == 'p'):
+        h = isotopes.hash(isotopes.path)
+        if(h != '0bc286b52011907bb270cf143e00ad6619aad49d7bca2ab7094da6ac9fb1a9ba'):
+          print("Failed hash - isotopes.p")
+          exit()              
+        with open(isotopes.path, 'rb') as f:
+          isotopes.d = pickle.load(f)
+      else:
+        print("Isotope data file is not available.  Quitting.")
+        exit()         
       isotopes.loaded = True
+      
+
+
+  @staticmethod
+  def hash(file_path):     
+    picklehash = hashlib.sha256()
+    with open(file_path, 'rb') as f:
+      fb = f.read(1048576)
+      while len(fb) > 0:
+        picklehash.update(fb)
+        fb = f.read(1048576)   
+    return picklehash.hexdigest()  
 
 
   @staticmethod 
