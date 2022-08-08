@@ -5,6 +5,7 @@ from isotopes import isotopes
 import matplotlib.pyplot as plt
 import copy
 import hashlib
+import time
 
 class decay:
 
@@ -61,12 +62,94 @@ class decay:
         decay.make_chain(k, l, out, bf)
       return out      
 
+
   @staticmethod
-  def calculate(parent, time, i_data_in, log=None, custom_chain=None):
+  def calculate(parent, mtime, i_data_in=None, log=None, parent_activity=None, parent_amount=None, custom_chain=None, time_units=None, activity_units=None, time_steps=1, plot_name=None):
+
+    # At a single time
+    if(time_steps == 1):
+      return decay.calculate_at_time(parent, mtime, i_data_in=i_data_in, log=log, parent_activity=parent_activity, parent_amount=parent_amount, custom_chain=custom_chain, time_units=time_units)
+
+    # Multiple time steps
+    else:
+      t = numpy.logspace(start=0.0, stop=numpy.log10(mtime), num=time_steps)
+      activity = []
+
+      for tn in t:
+        r = decay.calculate_at_time(parent, tn, i_data_in=i_data_in, parent_activity=parent_activity, parent_amount=parent_amount, custom_chain=custom_chain, time_units=time_units)
+        activity.append(r)
+
+      if(time_units is None):
+        time_units = 's'
+      if(activity_units is None):
+        activity_units = 'Bq'
+      
+      result = {}
+      result['time'] = t
+      result['activity'] = {}
+
+      # Add isotope activity arrays
+      for n in range(len(activity)):
+        for key in activity[n]['unique']:
+          if(key not in result['activity'].keys()):
+            result['activity'][key] = numpy.zeros((time_steps,), dtype=numpy.float64)
+      for n in range(len(activity)):
+        for key in activity[n]['tally']:
+          result['activity'][key][n] = activity[n]['tally'][key]['activityend']
+      
+      if(plot_name is not None):
+        plt.figure(figsize=[12, 8], dpi=144)
+        styles = ['solid', 'dashed', 'dashdot', 'dotted']
+        n = 0
+        for key in activity[n]['tally']:
+          if(isotopes.is_unstable(key)):          
+            plt.plot(result['time'], result['activity'][key], label=isotopes.get_hr(key), ls=styles[n%len(styles)])
+            n = n + 1
+        plt.xscale('log')
+        plt.yscale('log')
+        plt.title('Activity over time: ' + isotopes.get_hr(parent))
+        plt.xlabel('Time (' + time_units + ')')
+        plt.ylabel('Activity (' + activity_units + ')')
+        plt.legend()
+        plt.savefig(plot_name)
+
+      return result
+
+
+
+  @staticmethod
+  def calculate_at_time(parent, mtime, i_data_in=None, log=None, parent_activity=None, parent_amount=None, custom_chain=None, time_units=None):
+    tstart = time.time()
+
+    # Create an empty dictionary 
+    # Starting isotope amounts will be zero
+    # Production rates will be zero
+    if(i_data_in is None):
+      i_data_in = {}
+
+    if(parent_activity is not None):
+      parent_data = isotopes.get(parent)
+      if(not parent_data['stable']):
+        n0 = parent_activity / parent_data['decay_constant']
+        if(parent not in i_data_in.keys()):
+          i_data_in[parent] = {'w': 0.0, 'n0': 0.0}
+        i_data_in[parent]['n0'] = n0
+
+    if(time_units is not None):
+      if(time_units.lower() == 'min' or 'time_units'.lower() == 'mins'):
+        mtime = 60.0 * mtime
+      elif(time_units.lower() == 'hr' or 'time_units'.lower() == 'hrs'):
+        mtime = 3600.0 * mtime
+      elif(time_units.lower() == 'day' or 'time_units'.lower() == 'days'):
+        mtime = 86400.0 * mtime
+      elif(time_units.lower() == 'yr' or time_units.lower() == 'year' or 'time_units'.lower() == 'years'):
+        mtime = 31557600.0 * mtime
+    
+
+
 
     if(log != None):
       log_dir = decay.get_file_dir(log)
-      print(log_dir)
       decay.make_dir(log_dir)
 
     decay.results = {
@@ -145,6 +228,8 @@ class decay:
                                         'w': w,
                                         'n0': n0,
                                         'nend': 0.0,
+                                        'activity0': 0.0,
+                                        'activityend': 0.0,
                                         }
           else:
             decay.results['tally'][k] = {
@@ -159,6 +244,8 @@ class decay:
                                         'w': w,
                                         'n0': n0,
                                         'nend': 0.0,
+                                        'activity0': 0.0,
+                                        'activityend': 0.0,
                                         }
 
 
@@ -192,7 +279,7 @@ class decay:
         # Some observationally stable will still have a decay constant, so set to -1.0
         if(isotopes.is_stable(k)):
           l[n] = -1.0
-      nt = decay.calculate_activity(time, l, b, w, n0) 
+      nt = decay.calculate_activity(mtime, l, b, w, n0) 
       for n in range(len(decay.results['chains_individual'][cn])):
         decay.results['chains_individual'][cn][n]['nend'] = nt[n]
 
@@ -208,7 +295,16 @@ class decay:
           decay.results['tally'][k]['nend'] = decay.results['tally'][k]['nend'] + decay.results['chains_individual'][cn][n]['nend']
           set.append(ckeyh)
 
-
+    # Calculate activity
+    for key in decay.results['tally']:
+      if(decay.results['tally'][key]['stable']):
+        decay.results['tally'][key]['activity0'] = 0.0
+        decay.results['tally'][key]['activityend'] = 0.0
+      else:
+        lam = decay.results['tally'][key]['decay_constant']
+        decay.results['tally'][key]['activity0'] = decay.results['tally'][key]['n0'] * lam
+        decay.results['tally'][key]['activityend'] = decay.results['tally'][key]['nend'] * lam
+        
     # Log
     if(log != None):
       width = 140
@@ -268,9 +364,9 @@ class decay:
       line = line + decay.pad("Decay Constant", 18)
       line = line + decay.pad("W", 18)
       line = line + decay.pad("N(t=0)", 18)
-      line = line + decay.pad("N(t=" + str(time) + ")", 18)
+      line = line + decay.pad("N(t=" + str(mtime) + ")", 18)
       line = line + decay.pad("A(t=0)", 18)
-      line = line + decay.pad("A(t=" + str(time) + ")", 18)
+      line = line + decay.pad("A(t=" + str(mtime) + ")", 18)
       fh.write(line + "\n")
       fh.write(decay.hr(width) + "\n")
 
@@ -293,10 +389,21 @@ class decay:
       fh.write(decay.hr(width) + "\n")
       fh.write("\n")
       fh.write("\n")
+      fh.write("Time: " + str(time.time() - tstart) + "\n")
+      fh.write("\n")
       
       fh.close()
   
     return decay.results
+
+
+
+  @staticmethod
+  def print_unique_isotopes(chain):
+    for isotope in chain:
+      print(isotopes.get_hr(isotope))
+
+
 
   ##########################################
   # DECAY EQUATIONS
