@@ -1,5 +1,6 @@
 import os
 import numpy
+import sys
 from pz import pz
 from isotopes import isotopes
 import matplotlib.pyplot as plt
@@ -610,64 +611,7 @@ class decay:
     print("Decay")
 
     # Load isotopes dictionary
-    decay.set("../data/isotopes.pz")
-
-    """
-    idata = {}
-    parent = 27055
-    time = 3000
-    idata[27055] = {'w': 0.02, 'n0': 100.0}
-    idata[26055] = {'w': 0.04, 'n0': 20.0}
-    idata[25055] = {'w': 0.023, 'n0': 30.0}
-    decay.calculate(parent, time, idata, "log.txt")
-    """
-
-    """
-    idata = {}
-    parent = 83213
-    time = 1000
-    idata[83213] = {'w': 0.02, 'n0': 100.0}
-    decay.calculate(parent, time, idata, "testing/log_83213.txt")
-    """
-
-    """
-    idata = {}
-    parent = 84215
-    time = 10
-    idata[84215] = {'w': 0.02, 'n0': 100.0}
-    idata[81207] = {'w': 0.0, 'n0': 10.0}
-    decay.calculate(parent, time, idata, "testing/log_84215.txt")
-    """
-
-    """
-    idata = {}
-    parent = 85219
-    time = 1000
-    idata[85219] = {'w': 0.02, 'n0': 100.0}
-    idata[82207] = {'w': 0.0, 'n0': 10.0}
-    decay.calculate(parent, time, idata, "testing/log_85219.txt")
-    """
- 
-    """
-    idata = {}
-    parent = 84215
-    time = 10
-    custom_chain = [
-                   [{'isotope_key': 84215, 'bf': 0.0, 'w': 1.0, 'n0': 10000.0, 'half_life': 83.0},
-                   {'isotope_key': 85215, 'bf': 0.2, 'w': 0.0, 'n0': 0.0, 'half_life': 92.0},
-                   {'isotope_key': 83211, 'bf': 1.0, 'w': 0.0, 'n0': 40.0, 'half_life': 2.0}, {'isotope_key': 81207, 'bf': 0.6, 'w': 0.0, 'n0': 20.0, 'half_life': 506.44}, {'isotope_key': 82207, 'bf': 1.0, 'w': 2.0, 'n0': 10.0, 'half_life': None}],   
-                   [{'isotope_key': 84215, 'bf': 0.0, 'w': 1.0, 'n0': 10000.0, 'half_life': 83.0},
-                   {'isotope_key': 85215, 'bf': 0.2, 'w': 0.0, 'n0': 0.0, 'half_life': 92.0},
-                   {'isotope_key': 83211, 'bf': 1.0, 'w': 0.0, 'n0': 40.0, 'half_life': 2.0}, {'isotope_key': 84211, 'bf': 0.4, 'w': 0.0, 'n0': 0.0, 'half_life': 586.44}, {'isotope_key': 82207, 'bf': 1.0, 'w': 2.0, 'n0': 10.0, 'half_life': None}],
-                   [{'isotope_key': 84215, 'bf': 0.0, 'w': 1.0, 'n0': 10000.0, 'half_life': 83.0},
-                   {'isotope_key': 82211, 'bf': 0.8, 'w': 0.4, 'n0': 0.0, 'half_life': 47.0},
-                   {'isotope_key': 83211, 'bf': 1.0, 'w': 0.0, 'n0': 40.0, 'half_life': 2.0}, {'isotope_key': 81207, 'bf': 0.6, 'w': 0.0, 'n0': 20.0, 'half_life': 506.44}, {'isotope_key': 82207, 'bf': 1.0, 'w': 2.0, 'n0': 10.0, 'half_life': None}], 
-                   [{'isotope_key': 84215, 'bf': 0.0, 'w': 1.0, 'n0': 10000.0, 'half_life': 83.0},
-                   {'isotope_key': 82211, 'bf': 0.8, 'w': 0.4, 'n0': 0.0, 'half_life': 47.0},
-                   {'isotope_key': 83211, 'bf': 1.0, 'w': 0.0, 'n0': 40.0, 'half_life': 2.0}, {'isotope_key': 84211, 'bf': 0.4, 'w': 0.0, 'n0': 0.0, 'half_life': 586.44}, {'isotope_key': 82207, 'bf': 1.0, 'w': 2.0, 'n0': 10.0, 'half_life': None}]
-                   ]
-    decay.calculate(parent, time, idata, "testing/log_84215_test.txt", custom_chain)
-    """
+    decay.set("../data/isotopes.p")
 
     idata = {}
     parent = 84216
@@ -681,8 +625,58 @@ class decay:
     decay.calculate(parent, time, idata, "testing/log_84216_new.txt")
 
 
+  @staticmethod
+  def run():
+    # Run with an input file
+    print("##############################################")
+    print("#                  DECAY                     #")
+    print("#     Radioactive Decay Chain Calculator     #")
+    print("#           Decay data from JEFF 3.3         #")
+    print("##############################################")
+    print()
+    
+    # Read and check isotope file    
+    if(len(sys.argv) < 2):
+      print("Specify input file.  Exiting.")
+      exit()    
+    inp_file = sys.argv[1]
+    if(not os.path.isfile(inp_file)):
+      print("Input file does not exist.  Exiting.")
+      exit()
+      
+    isotope_file = None
+    
+    material = []
+      
+    # Read input file  
+    fh = open(inp_file, 'r')
+    for line in fh:
+      line = line.split('#')
+      line = line[0].strip()
+      if(line != ""):
+        if(line[0:8].lower() == "isotopes"):
+          isotope_file = line[8:].strip()
+        elif(line[0:8].lower() == "isotopes"): 
+          
+    fh.close()
+    
+    # check isotope file
+    if(not os.path.isfile(isotope_file)):
+      print("Isotope file does not exist.  Exiting.")
+      exit()
+    print("Isotope file: ", isotope_file)
+    
+    # Set 
+    decay.set(isotope_file)
+    
+    
+    print(isotopes.inp('cs', 137))
+
+
 def main():
-  decay.test()
+  decay.run()
+   
+  
 
 if __name__ == "__main__":
     main()    
