@@ -1,0 +1,6 @@
+isotopes ../../data/isotopes.p
+amounts activity
+time 1000
+time_unit yr
+time_steps 1000
+Ra 226 1.0 0.0

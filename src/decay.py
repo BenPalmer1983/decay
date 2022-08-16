@@ -65,11 +65,11 @@ class decay:
 
 
   @staticmethod
-  def calculate(parent, mtime, i_data_in=None, log=None, parent_activity=None, parent_amount=None, custom_chain=None, time_units=None, activity_units=None, time_steps=1, plot_name=None):
+  def calculate(parent, mtime, i_data_in=None, log=None, parent_activity=None, parent_amount=None, parent_production_rate=0.0, custom_chain=None, time_units=None, activity_units=None, time_steps=1, plot_name=None):
 
     # At a single time
     if(time_steps == 1):
-      return decay.calculate_at_time(parent, mtime, i_data_in=i_data_in, log=log, parent_activity=parent_activity, parent_amount=parent_amount, custom_chain=custom_chain, time_units=time_units)
+      return decay.calculate_at_time(parent, mtime, i_data_in=i_data_in, log=log, parent_activity=parent_activity, parent_amount=parent_amount, parent_production_rate=parent_production_rate, custom_chain=custom_chain, time_units=time_units)
 
     # Multiple time steps
     else:
@@ -77,7 +77,7 @@ class decay:
       activity = []
 
       for tn in t:
-        r = decay.calculate_at_time(parent, tn, i_data_in=i_data_in, parent_activity=parent_activity, parent_amount=parent_amount, custom_chain=custom_chain, time_units=time_units)
+        r = decay.calculate_at_time(parent, tn, i_data_in=i_data_in, parent_activity=parent_activity, parent_amount=parent_amount, parent_production_rate=parent_production_rate, custom_chain=custom_chain, time_units=time_units)
         activity.append(r)
 
       if(time_units is None):
@@ -119,7 +119,7 @@ class decay:
 
 
   @staticmethod
-  def calculate_at_time(parent, mtime, i_data_in=None, log=None, parent_activity=None, parent_amount=None, custom_chain=None, time_units=None):
+  def calculate_at_time(parent, mtime, i_data_in=None, log=None, parent_activity=None, parent_amount=None, parent_production_rate=0.0, custom_chain=None, time_units=None):
     tstart = time.time()
 
     # Create an empty dictionary 
@@ -133,7 +133,7 @@ class decay:
       if(not parent_data['stable']):
         n0 = parent_activity / parent_data['decay_constant']
         if(parent not in i_data_in.keys()):
-          i_data_in[parent] = {'w': 0.0, 'n0': 0.0}
+          i_data_in[parent] = {'w': parent_production_rate, 'n0': 0.0}
         i_data_in[parent]['n0'] = n0
 
     if(time_units is not None):
@@ -626,6 +626,38 @@ class decay:
 
 
   @staticmethod
+  def make_plot(plot_name, times, activities, time_units, activity_units):
+    if(plot_name is not None):
+      plt.figure(figsize=[12, 8], dpi=144)
+      styles = ['solid', 'dashed', 'dashdot', 'dotted']
+      n = 0
+      ymin = None
+      ymax = None
+      for key in activities.keys():
+        if(isotopes.is_unstable(key)):          
+          plt.plot(times, activities[key], label=isotopes.get_hr(key), ls=styles[n%len(styles)])
+          n = n + 1
+          if(ymin is None):
+            ymin = numpy.amin(activities[key])
+          else:
+            ymin = min(ymin, numpy.amin(activities[key]))
+          if(ymax is None):
+            ymax = numpy.amax(activities[key])
+          else:
+            ymax = max(ymax, numpy.amin(activities[key]))
+      ymin = max(ymin * 0.5, 1.0e-8)
+      ymax = 2.0 * ymax
+      plt.xscale('log')
+      plt.yscale('log')
+      plt.title('Activity over time')
+      plt.xlabel('Time (' + time_units + ')')
+      plt.ylabel('Activity (' + activity_units + ')')
+      plt.ylim(ymin, ymax)
+      plt.legend()
+      plt.savefig(plot_name)
+      
+
+  @staticmethod
   def run():
     # Run with an input file
     print("##############################################")
@@ -645,7 +677,10 @@ class decay:
       exit()
       
     isotope_file = None
-    
+    amounts = None
+    time = None
+    time_unit = 's'
+    time_steps = 1
     material = []
       
     # Read input file  
@@ -656,8 +691,20 @@ class decay:
       if(line != ""):
         if(line[0:8].lower() == "isotopes"):
           isotope_file = line[8:].strip()
-        elif(line[0:8].lower() == "isotopes"): 
-          
+        elif(line[0:7].lower() == "amounts"): 
+          amounts = line[7:].strip()
+        elif(line[0:9].lower() == "time_unit"): 
+          time_unit = line[10:].strip()
+        elif(line[0:10].lower() == "time_steps"): 
+          time_steps = int(line[11:])
+        elif(line[0:4].lower() == "time"): 
+          time = float(line[5:])
+        else:
+          d = line.split(" ")
+          if(len(d) == 3):
+            material.append([d[0], int(d[1]), float(d[2]), 0.0, None])
+          elif(len(d) == 4):
+            material.append([d[0], int(d[1]), float(d[2]), float(d[3]), None])
     fh.close()
     
     # check isotope file
@@ -666,12 +713,76 @@ class decay:
       exit()
     print("Isotope file: ", isotope_file)
     
-    # Set 
+    # Set isotope file
     decay.set(isotope_file)
     
+    # Calculate activity
+    activity_results = {}
+    start = {}
+    production_rate = {}
     
-    print(isotopes.inp('cs', 137))
+    for n in range(len(material)):
+      material[n][4] = isotopes.inp(material[n][0], material[n][1])    
+      # If a valid isotope
+      if(material[n][4]['ok'] and material[n][4]['valid']):
+        isotope_code = material[n][4]['code']
+        if(isotope_code not in start.keys()):
+          start[isotope_code] = 0.0
+        start[isotope_code] = start[isotope_code] + material[n][2] 
+        if(isotope_code not in production_rate.keys()):
+          production_rate[isotope_code] = 0.0
+        production_rate[isotope_code] = production_rate[isotope_code] + material[n][3]         
+        parent_production_rate = material[n][3]
+        if(amounts == 'activity'):
+          parent_activity = material[n][2]
+          parent_amount = None
+        else:
+          parent_activity = None
+          parent_amount = material[n][2]  
+        r = decay.calculate(isotope_code, time, i_data_in=None, log=None, parent_activity=parent_activity, parent_amount=parent_amount, parent_production_rate=parent_production_rate, custom_chain=None, time_units=time_unit, activity_units=None, time_steps=time_steps, plot_name=None)
+        time_array = r['time']
+        activity_arrays = r['activity']
+        for k in activity_arrays.keys():
+          if(k not in activity_results.keys()):
+            activity_results[k] = activity_arrays[k]
+          else:
+            activity_results[k] = activity_results[k] + activity_arrays[k]
+       
+    # Plot results   
+    decay.make_plot(plot_name='results.eps', times=time_array, activities=activity_results, time_units=time_unit, activity_units='')   
+    
+    # Output results
+    fh = open('results.csv', 'w')
+    fh.write('Time')
+    for key in activity_results.keys():
+      if(isotopes.is_unstable(key)):   
+        fh.write(',')
+        fh.write(isotopes.get_hr(key))
+    fh.write('\n')  
+    for n in range(len(time_array)):
+      fh.write(str(time_array[n]))
+      for key in activity_results.keys():
+        if(isotopes.is_unstable(key)):   
+          fh.write(',')
+          fh.write(str(activity_results[key][n]))
+      fh.write('\n')
+    fh.close()    
+      
+    #    print(isotopes.get_half_life(isotope_code))
+    #    print(isotopes.get_decay_constant(isotope_code))
 
+    fh = open('startend.txt', 'w')
+    fh.write("{:16s} {:24s} {:24s} {:24s} {:24s}\n".format("Isotope", "Half Life", "Production Rate", "Start Activity", "End Activity"))
+    for key in activity_results.keys():
+      if(isotopes.is_unstable(key)):
+        s = 0.0
+        if(key in start.keys()):
+          s = start[key]
+        w = 0.0
+        if(key in production_rate.keys()):
+          w = production_rate[key]
+        fh.write("{:16s} {:24.12e} {:24.12e} {:24.12e} {:24.12e}\n".format(isotopes.get_hr(key), isotopes.get_half_life(key), w, s, activity_results[key][-1]))
+    fh.close()
 
 def main():
   decay.run()
