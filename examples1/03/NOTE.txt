@@ -1,0 +1,10 @@
+Some errors could be from the half life values used.
+
+Example AM-241
+
+thalf = 13658100000
+lam = 5.074989790380399e-11
+
+
+I have multiplied years by 365.25 whereas they may be multiplied by 365 elsewhere.
+

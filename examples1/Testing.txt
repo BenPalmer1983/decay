@@ -1,0 +1,9 @@
+Folders 02-04 test this code against the results listed in document below:
+
+https://rais.ornl.gov/documents/FINALPEAKTM.pdf
+
+Good match to Ra-226, Am-241 and Th-228.
+
+I used 365.25 days per year and this seems to be a source of discrepancies in a few of the values.
+
+

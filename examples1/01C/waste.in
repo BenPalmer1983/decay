@@ -1,0 +1,13 @@
+isotopes ../../data/isotopes.p
+amounts activity
+time 10000
+time_unit yr
+time_steps 100
+Cs 137 1.0 5.78e-2
+Cs 137 1.0 
+Sr 90 0.5
+Tc 99 0.05
+Sn 126 0.12
+Cs 135 0.21
+Sm 151 0.09
+Ra 226 1.0
